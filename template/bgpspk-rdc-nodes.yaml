@@ -1,0 +1,514 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Create nodes (emulating NFs) for BGP test
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: BGP Test Nodes Creation
+        Parameters:
+          - NodeStackName
+          - VpcId
+          - MgmtSubnetAz1
+          - SvcSubnetAz1
+          - MgmtSubnetAz2
+          - SvcSubnetAz2
+      - Label:
+          default: vRouter(VyOS) Router for the AZs
+        Parameters:
+          - vRouterInstanceType
+          - vRouterKeyPairName
+          - vRouterAmiId
+          - vRouterSvcEniIpAddressAz1
+          - vRouterSvcEniIpAddressAz2
+      - Label:
+          default: NF Configuration in the AZs
+        Parameters:
+          - NfInstanceType
+          - NfKeyPairName
+          - NfAmiId
+          - NfSvcEniIpAddress
+          - NfSvcEniIpAddressAz1
+          - NfSvcEniIpAddressAz2
+
+Parameters:
+  VpcId:
+    Type: "AWS::EC2::VPC::Id"
+    Description: The VPC of the BGP test environment
+  MgmtSubnetAz1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the mgmt (eth0) interface of the vRouter and NF
+  SvcSubnetAz1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the BGP and SVC (eth1) interface of the vRouter and NF
+  MgmtSubnetAz2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the mgmt (eth0) interface of the vRouter and NF
+  SvcSubnetAz2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the BGP and SVC (eth1) interface of the vRouter and NF
+  vRouterSvcEniIpAddressAz1:
+    Type: String
+    Default: '10.0.2.7'
+    Description: "SVC IP address (eth1) of the vRouter"
+  vRouterSvcEniIpAddressAz2:
+    Type: String
+    Default: '10.0.3.7'
+    Description: "SVC IP address (eth1) of the vRouter"
+  vRouterInstanceType:
+    Type: String
+    Default: c5.large
+    Description: EC2 instance type for vRouter (C5 only)
+    AllowedValues:
+      - c5.large
+      - c5.xlarge
+      - c5.2xlarge
+      - c5.4xlarge
+      - c5.9xlarge
+      - c5.12xlarge
+      - c5.18xlarge
+      - c5.24xlarge
+  vRouterKeyPairName:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: The EC2 Key Pair to allow SSH access to the instances
+  vRouterAmiId:
+    Type: String
+    Default: ami-0fa0d75bcdae6b2c8
+    Description: "AMI ID of vRouter (VyOS is in default)"
+
+# Nf at each AZ
+  NfSvcEniIpAddressAz1:
+    Type: String
+    Default: '10.0.2.8'
+    Description: "ENI IP address (eth1) of NF service interface"
+  NfSvcEniIpAddressAz2:
+    Type: String
+    Default: '10.0.3.8'
+    Description: "ENI IP address (eth1) of NF service interface"
+  NfInstanceType:
+    Type: String
+    Default: t3.medium
+    Description: EC2 instance type for test NF
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+      - c5.large
+      - m5.large
+  NfKeyPairName:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: The EC2 Key Pair to allow SSH access to the instances
+  NfAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+Resources:
+# Instance Role (common to vRouters and NFs)
+  NodeInstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      RoleName: !Sub "BgpSpkIamRole-${AWS::StackName}"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSCloudFormationFullAccess"
+      Path: /
+  NodeInstancePolicy:
+    Type: "AWS::IAM::Policy"
+    DependsOn: NodeInstanceRole
+    Properties:
+      PolicyName: !Sub "BgpSpkNodeInstancePolicy-${AWS::StackName}"
+      Roles: [
+          !Ref NodeInstanceRole
+        ]
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogStream
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - logs:PutLogEvents
+              - s3:Get*
+              - s3:List*
+              - sts:AssumeRole
+            Effect: Allow
+            Resource: "*"
+  NodeInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        - !Ref NodeInstanceRole
+  NodeSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security group for vRouter and NF node
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub "bgpspk-node-sg-${AWS::StackName}"
+  NodeSecurityGroupIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: NodeSecurityGroup
+    Properties:
+      Description: Allow node to communicate with each other
+      FromPort: 0
+      GroupId: !Ref NodeSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref NodeSecurityGroup
+      ToPort: 65535
+  NodeSecurityGroupIngressVPCCidr:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: NodeSecurityGroup
+    Properties:
+      Description: Add VPC CIDR
+      FromPort: 179
+      GroupId: !Ref NodeSecurityGroup
+      IpProtocol: "-1"
+      CidrIp: !GetAtt getVPCDetailsAz1.vpcCidr
+      ToPort: 179
+  MgmtSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security group for mgmt of vRouter and NF
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub "bgpspk-mgmt-sg-${AWS::StackName}"
+  MgmtSecurityGroupIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: MgmtSecurityGroup
+    Properties:
+      Description: Allow SSH
+      GroupId: !Ref MgmtSecurityGroup
+      IpProtocol: "tcp"
+      CidrIp: "0.0.0.0/0"
+      FromPort: 22
+      ToPort: 22
+
+# Lambda GetVpcInfo
+  RoleLambdaGetVPCDetails:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+  PolicyLambdaGetVPCDetails:
+    Type: "AWS::IAM::Policy"
+    DependsOn: RoleLambdaGetVPCDetails
+    Properties:
+      PolicyName: PolicyRoleLambdaGetVPCDetails
+      Roles: [
+          !Ref RoleLambdaGetVPCDetails
+        ]
+      PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: [
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSubnets",
+              ]
+              Resource: "*"
+            - Effect: Allow
+              Action: [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ]
+              Resource: "arn:aws:logs:*:*:*"
+            - Effect: Allow
+              Action: "logs:CreateLogGroup"
+              Resource: "arn:aws:logs:*:*:*"
+  getVPCDetailsAz1:
+    Type: Custom::getVPCDetailsAz1
+    Properties:
+      ServiceToken: !GetAtt LambdaGetVPCDetails.Arn
+      VpcId: !Ref VpcId
+      SubnetId: !Ref MgmtSubnetAz1
+
+  getVPCDetailsAz2:
+    Type: Custom::getVPCDetailsAz2
+    Properties:
+      ServiceToken: !GetAtt LambdaGetVPCDetails.Arn
+      VpcId: !Ref VpcId
+      SubnetId: !Ref MgmtSubnetAz2
+
+# Resources for vRouters
+  vRouterMgmtEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MgmtSubnetAz1
+      GroupSet:
+        - !Ref MgmtSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "vrouter-mgmt-eni-az1-${AWS::StackName}"
+  vRouterSvcEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SvcSubnetAz1
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref vRouterSvcEniIpAddressAz1
+      Tags:
+        - Key: Name
+          Value: !Sub "vrouter-svc-eni-az1-${AWS::StackName}"
+  vRouterMgmtEniAz2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MgmtSubnetAz2
+      GroupSet:
+        - !Ref MgmtSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "vrouter-mgmt-eni-az2-${AWS::StackName}"
+  vRouterSvcEniAz2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SvcSubnetAz2
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref vRouterSvcEniIpAddressAz2
+      Tags:
+        - Key: Name
+          Value: !Sub "vrouter-svc-eni-az2-${AWS::StackName}"
+
+# Resources for NFs
+  NfMgmtEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MgmtSubnetAz1
+      GroupSet:
+        - !Ref MgmtSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-mgmt-eni-az1-${AWS::StackName}"
+  NfSvcEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SvcSubnetAz1
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref NfSvcEniIpAddressAz1
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-svc-eni-az1-${AWS::StackName}"
+  NfMgmtEniAz2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref MgmtSubnetAz2
+      GroupSet:
+        - !Ref MgmtSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-mgmt-eni-az2-${AWS::StackName}"
+  NfSvcEniAz2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SvcSubnetAz2
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref NfSvcEniIpAddressAz2
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-svc-eni-az2-${AWS::StackName}"
+
+# Labmda for VPC info
+  LambdaGetVPCDetails:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Look up vpc CIDR,AZ details from vpc & subnet
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt RoleLambdaGetVPCDetails.Arn
+      Runtime: "python3.8"
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import logging
+
+          def handler(event, context):
+            logger = logging.getLogger()
+            logger.setLevel(logging.INFO)
+
+            # initialize our responses, assume failure by default
+
+            response_data = {}
+            response_status = cfnresponse.FAILED
+
+            logger.info('Received event: {}'.format(json.dumps(event)))
+
+            if event['RequestType'] == 'Delete':
+              response_status = cfnresponse.SUCCESS
+              cfnresponse.send(event, context, response_status, response_data)
+
+            try:
+              ec2=boto3.client('ec2')
+            except Exception as e:
+              logger.info('boto3.client failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+
+            VpcId = event['ResourceProperties']['VpcId']
+            SubnetId = event['ResourceProperties']['SubnetId']
+
+            try:
+              vpc = ec2.describe_vpcs( VpcIds=[VpcId] )
+            except Exception as e:
+              logger.info('ec2.describe_vpcs failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+            CidrBlock = vpc['Vpcs'][0]['CidrBlock']
+            logger.info('CidrBlock {}'.format(CidrBlock))
+            try:
+              subnets = ec2.describe_subnets( SubnetIds=[SubnetId])
+            except Exception as e:
+              logger.info('ec2.describe_subnets failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+            az = subnets['Subnets'][0]['AvailabilityZone']
+            logger.info('AvailabilityZone {}'.format(az))
+            response_data['az'] = az
+            response_data['vpcCidr'] = CidrBlock
+            response_status = cfnresponse.SUCCESS
+            cfnresponse.send(event, context, response_status, response_data)
+
+# Creating vRouter from LaunchTemplate at each AZ
+# Note: src/dst check disable, EIP to mgmt interface, SG with allowing packets from VPC CIDR
+  vRouterInstanceAz1:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !GetAtt getVPCDetailsAz1.az
+      InstanceType: !Ref vRouterInstanceType
+      KeyName: !Ref vRouterKeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !GetAtt vRouterMgmtEniAz1.Id
+        - DeviceIndex: 1
+          NetworkInterfaceId: !GetAtt vRouterSvcEniAz1.Id
+      ImageId: !Ref vRouterAmiId
+      Tags:
+        - Key: Name
+          Value: !Sub "vRouter-az1-${AWS::StackName}"
+
+  vRouterInstanceAz2:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !GetAtt getVPCDetailsAz2.az
+      InstanceType: !Ref vRouterInstanceType
+      KeyName: !Ref vRouterKeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !GetAtt vRouterMgmtEniAz2.Id
+        - DeviceIndex: 1
+          NetworkInterfaceId: !GetAtt vRouterSvcEniAz2.Id
+      ImageId: !Ref vRouterAmiId
+      Tags:
+        - Key: Name
+          Value: !Sub "vRouter-az2-${AWS::StackName}"
+
+# Creating NFs from LaunchTemplate at each AZ
+# Note: src/dst check disable, EIP to mgmt interface, SG with allowing packets from VPC CIDR
+  NfInstanceAz1:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !GetAtt getVPCDetailsAz1.az
+      InstanceType: !Ref NfInstanceType
+      KeyName: !Ref NfKeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !GetAtt NfMgmtEniAz1.Id
+        - DeviceIndex: 1
+          NetworkInterfaceId: !GetAtt NfSvcEniAz1.Id
+      ImageId: !Ref NfAmiId
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-az1-${AWS::StackName}"
+
+  NfInstanceAz2:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !GetAtt getVPCDetailsAz2.az
+      InstanceType: !Ref NfInstanceType
+      KeyName: !Ref NfKeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !GetAtt NfMgmtEniAz2.Id
+        - DeviceIndex: 1
+          NetworkInterfaceId: !GetAtt NfSvcEniAz2.Id
+      ImageId: !Ref NfAmiId
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-az2-${AWS::StackName}"
+
+# Bind EIPs to MGMT Interfaces
+  vRouterMgmtEipAz1:
+    Type: AWS::EC2::EIP
+  vRouterMgmtIpAssocAz1:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !GetAtt vRouterMgmtEniAz1.Id
+      AllocationId: !GetAtt vRouterMgmtEipAz1.AllocationId
+  vRouterMgmtEipAz2:
+    Type: AWS::EC2::EIP
+  vRouterMgmtIpAssocAz2:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !GetAtt vRouterMgmtEniAz2.Id
+      AllocationId: !GetAtt vRouterMgmtEipAz2.AllocationId
+  NfMgmtEipAz1:
+    Type: AWS::EC2::EIP
+  NfMgmtIpAssocAz1:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !GetAtt NfMgmtEniAz1.Id
+      AllocationId: !GetAtt NfMgmtEipAz1.AllocationId
+  NfMgmtEipAz2:
+    Type: AWS::EC2::EIP
+  NfMgmtIpAssocAz2:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !GetAtt NfMgmtEniAz2.Id
+      AllocationId: !GetAtt NfMgmtEipAz2.AllocationId
+
+Outputs:
+# Mgmt Public IP of VyOS vRouter
+# Mgmt Public IP of Nf
+  vRouterMgmtPublicIpAz1:
+    Description: vRouter1-AZ1 Public IP
+    Value: !Ref vRouterMgmtEipAz1
+    Export:
+      Name: !Sub "${AWS::StackName}-vRouter-AZ1-publicip"
+  vRouterMgmtPublicIpAz2:
+    Description: vRouter2-AZ2 Public IP
+    Value: !Ref vRouterMgmtEipAz2
+    Export:
+      Name: !Sub "${AWS::StackName}-vRouter-AZ2-publicip"
+  NfrMgmtPublicIpAz1:
+    Description: Nf1-AZ1 Public IP
+    Value: !Ref NfMgmtEipAz1
+    Export:
+      Name: !Sub "${AWS::StackName}-nf-AZ1-publicip"
+  NfMgmtPublicIpAz2:
+    Description: Nf2-AZ2 Public IP
+    Value: !Ref NfMgmtEipAz2
+    Export:
+      Name: !Sub "${AWS::StackName}-nf-AZ2-publicip"

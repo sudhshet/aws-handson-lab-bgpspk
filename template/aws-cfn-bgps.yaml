@@ -1,0 +1,569 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: BGP speaker
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label: BGP Speaker
+        Parameters:
+          - BGPSpeakerStackName
+      - Label: BGP Speaker Configuration
+        Parameters:
+          - VpcId
+          - BGPSpeakerPrimarySubnet
+          - BGPSpeakerSecondarySubnet
+          - BGPSpeakerPrimaryENIIPAddress
+          - BGPSpeakerSecondaryENIIPAddresses
+          - NodeInstanceType
+          - SubnetBasedLoopbacks
+          - BreakoutGWId
+          - KeyName
+          - VPCRTTag
+          - AMIId
+          - S3Bucket
+      - Label: BGP Speaker BGP Configuration
+        Parameters:
+          - BGPSpeakerAS
+          - PeerAS
+          - AuthPassword
+          - PrimaryENIPeers
+          - SecondaryENIPeers
+Parameters:
+  VpcId:
+    Type: "AWS::EC2::VPC::Id"
+    Description: The VPC of the BGP Speaker instances
+
+  BGPSpeakerPrimarySubnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the primary (eth0) interface of the BGP speaker
+
+  BGPSpeakerAS:
+    Type: Number
+    Description: "AS Number of the BGP Speaker"
+
+  PeerAS:
+    Type: Number
+    Description: "AS Number of the Peers. All peers will have same AS number"
+
+  AuthPassword:
+    Type: String
+    Description: "Password for BGP association, which peer uses. You can leave default value as None, if no passowrd is used"
+    Default: "None"
+
+  BGPSpeakerPrimaryENIIPAddress:
+    Type: String
+    Description: "Primary IP address (eth0) of the BGP Speaker"
+
+  BGPSpeakerSecondaryENIIPAddresses:
+    Type: String
+    Description: "Secondary IP address (eth1) of the BGP Speaker"
+
+  PrimaryENIPeers:
+    Type: String
+    Description: "Comma Separated List of Neighbor IP addresses for BGP peering on eth0 interface"
+
+  SecondaryENIPeers:
+    Type: String
+    Description: "Comma Separated List of Neighbor IP addresses for BGP peering on eth1 interface"
+
+  KeyName:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: The EC2 Key Pair to allow SSH access to the instances
+
+  BGPSpeakerSecondarySubnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet Id of the secondary (eth1) interface of the BGP speaker
+
+  AMIId:
+    Type: String
+    Description: "AMIId of the BGP speaker (use AMIs if you dont have internet access). Leave it blank to install the BGP speaker s/w on standard amazon linux 2"
+
+  NodeImageIdSSMParam:
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: AWS Systems Manager Parameter Store parameter of the AMI ID for the worker node instances.
+
+  SubnetBasedLoopbacks:
+    Type: String
+    Description: "Denotes if loopbacks are created as subnet in VPC (uncommon). "
+    Default: False
+    AllowedValues:
+      - True
+      - False
+
+  BreakoutGWId:
+    Type: String
+    Description: "Denotes the LGW ID or IGW ID , in case of local Breakout. if remote breakout then none "
+    Default: none
+
+  VPCRTTag:
+    Type: String
+    Description: "Tag on VPC RT table to identify the vpc RTs to be updated. Leave it blank for ALL VPC RTs"
+
+  S3Bucket:
+    Type: String
+    Description: Specify S3 Bucket(directory) where you have the install scripts for BGP speaker
+
+  NodeInstanceType:
+    Type: String
+    Default: t2.small
+    Description: EC2 instance type for the node instances (must be supported in the current AZ/LocalZone/Outpost)
+    AllowedValues:
+      - c1.medium
+      - c1.xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - c3.4xlarge
+      - c3.8xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - c5.large
+      - c5.xlarge
+      - c5.2xlarge
+      - c5.4xlarge
+      - c5.9xlarge
+      - c5.12xlarge
+      - c5.18xlarge
+      - c5.24xlarge
+      - m1.small
+      - m1.medium
+      - m1.large
+      - m1.xlarge
+      - m2.xlarge
+      - m2.2xlarge
+      - m2.4xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - m4.10xlarge
+      - m4.16xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - m5.8xlarge
+      - m5.12xlarge
+      - m5.16xlarge
+      - m5.24xlarge
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+
+
+Mappings:
+  PartitionMap:
+    aws:
+      EC2ServicePrincipal: "ec2.amazonaws.com"
+    aws-us-gov:
+      EC2ServicePrincipal: "ec2.amazonaws.com"
+    aws-cn:
+      EC2ServicePrincipal: "ec2.amazonaws.com.cn"
+    aws-iso:
+      EC2ServicePrincipal: "ec2.c2s.ic.gov"
+    aws-iso-b:
+      EC2ServicePrincipal: "ec2.sc2s.sgov.gov"
+Conditions:
+  HasNodeImageId: !Not
+    - "Fn::Equals":
+        - Ref: AMIId
+        - ""
+  HasSshKey: !Not
+    - "Fn::Equals":
+        - Ref: KeyName
+        - ""
+Resources:
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSCloudFormationFullAccess"
+      Path: /
+
+  NodeInstancePolicy:
+    Type: "AWS::IAM::Policy"
+    DependsOn: NodeInstanceRole
+    Properties:
+      PolicyName: NodeInstancePolicy
+      Roles: [
+          !Ref NodeInstanceRole
+        ]
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogStream
+              - kms:Decrypt
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - kms:GenerateDataKey
+              - logs:PutLogEvents
+              - s3:Get*
+              - s3:List*
+              - ec2:DescribeSubnets
+              - ec2:DescribeVpcs
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeNetworkInterfaceAttribute
+              - ec2:CreateRoute
+              - ec2:DeleteRoute
+              - ec2:DescribeNetworkInterfacePermissions
+              - ec2:DescribeAddresses
+              - ec2:CreateLocalGatewayRoute
+              - ec2:ModifyLocalGatewayRoute
+              - ec2:DeleteLocalGatewayRoute
+              - ec2:DescribeLocalGatewayRouteTables
+              - ec2:SearchLocalGatewayRoutes
+              - ec2:AssociateAddress
+              - ec2:DisassociateAddress
+              - ec2:DescribeRouteTables
+              - ec2:ReplaceRoute
+              - sts:AssumeRole
+            Effect: Allow
+            Resource: "*"
+
+
+  NodeInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        - !Ref NodeInstanceRole
+
+  NodeSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security group for BGP Speaker node
+      VpcId: !Ref VpcId
+
+  NodeSecurityGroupIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: NodeSecurityGroup
+    Properties:
+      Description: Allow node to communicate with each other
+      FromPort: 0
+      GroupId: !Ref NodeSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref NodeSecurityGroup
+      ToPort: 65535
+
+  NodeSecurityGroupIngressVPCCidr:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: NodeSecurityGroup
+    Properties:
+      Description: Add VPC CIDR
+      FromPort: 179
+      GroupId: !Ref NodeSecurityGroup
+      IpProtocol: "-1"
+      CidrIp: !GetAtt getVPCDetails.vpcCidr
+      ToPort: 179
+
+  RoleLambdaGetVPCDetails:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+  PolicyLambdaGetVPCDetails:
+    Type: "AWS::IAM::Policy"
+    DependsOn: RoleLambdaGetVPCDetails
+    Properties:
+      PolicyName: PolicyRoleLambdaGetVPCDetails
+      Roles: [
+          !Ref RoleLambdaGetVPCDetails
+        ]
+      PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: [
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSubnets",
+              ]
+              Resource: "*"
+            - Effect: Allow
+              Action: [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ]
+              Resource: "arn:aws:logs:*:*:*"
+            - Effect: Allow
+              Action: "logs:CreateLogGroup"
+              Resource: "arn:aws:logs:*:*:*"
+
+  getVPCDetails:
+    Type: Custom::getVPCDetails
+    Properties:
+      ServiceToken: !GetAtt LambdaGetVPCDetails.Arn
+      VpcId: !Ref VpcId
+      SubnetId: !Ref BGPSpeakerPrimarySubnet
+
+  MyENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref BGPSpeakerPrimarySubnet
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref BGPSpeakerPrimaryENIIPAddress
+  MyENI2:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref BGPSpeakerSecondarySubnet
+      GroupSet:
+        - !Ref NodeSecurityGroup
+      PrivateIpAddress: !Ref BGPSpeakerSecondaryENIIPAddresses
+  LambdaGetVPCDetails:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Look up vpc CIDR,AZ details from vpc & subnet
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt RoleLambdaGetVPCDetails.Arn
+      Runtime: "python3.8"
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import logging
+
+          def handler(event, context):
+            logger = logging.getLogger()
+            logger.setLevel(logging.INFO)
+
+            # initialize our responses, assume failure by default
+
+            response_data = {}
+            response_status = cfnresponse.FAILED
+
+            logger.info('Received event: {}'.format(json.dumps(event)))
+
+            if event['RequestType'] == 'Delete':
+              response_status = cfnresponse.SUCCESS
+              cfnresponse.send(event, context, response_status, response_data)
+
+            try:
+              ec2=boto3.client('ec2')
+            except Exception as e:
+              logger.info('boto3.client failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+
+            VpcId = event['ResourceProperties']['VpcId']
+            SubnetId = event['ResourceProperties']['SubnetId']
+
+            try:
+              vpc = ec2.describe_vpcs( VpcIds=[VpcId] )
+            except Exception as e:
+              logger.info('ec2.describe_vpcs failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+            CidrBlock = vpc['Vpcs'][0]['CidrBlock']
+            logger.info('CidrBlock {}'.format(CidrBlock))
+            try:
+              subnets = ec2.describe_subnets( SubnetIds=[SubnetId])
+            except Exception as e:
+              logger.info('ec2.describe_subnets failure: {}'.format(e))
+              cfnresponse.send(event, context, response_status, response_data)
+            az = subnets['Subnets'][0]['AvailabilityZone']
+            logger.info('AvailabilityZone {}'.format(az))
+            response_data['az'] = az
+            response_data['vpcCidr'] = CidrBlock
+            response_status = cfnresponse.SUCCESS
+            cfnresponse.send(event, context, response_status, response_data)
+
+  NodeLaunchTemplate:
+    Type: "AWS::EC2::LaunchTemplate"
+    DependsOn:
+    - NodeSecurityGroup
+    - getVPCDetails
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              VolumeSize: 20
+              VolumeType: "gp2"
+        IamInstanceProfile:
+          Arn: !GetAtt NodeInstanceProfile.Arn
+        ImageId: !Ref NodeImageIdSSMParam
+        ImageId: !If
+           - HasNodeImageId
+           - !Ref AMIId
+           - !Ref NodeImageIdSSMParam
+        InstanceType: !Ref NodeInstanceType
+
+        KeyName: !Ref KeyName
+#        SecurityGroupIds:
+#        - !Ref NodeSecurityGroup
+        UserData: !Base64
+          Fn::Sub:
+            - |-
+              #!/usr/bin/env bash
+
+              sudo -u ec2-user mkdir -p /home/ec2-user/conf
+              sudo -u ec2-user mkdir -p /home/ec2-user/bin
+              sudo -u ec2-user mkdir -p /home/ec2-user/logs
+              sudo -u ec2-user mkdir -p /home/ec2-user/scr
+              ##start copying
+              sudo -u ec2-user aws s3 cp ${S3Bucket} /tmp/ --recursive
+              sudo -u ec2-user chmod a+x /tmp/gobgp /tmp/gobgpd
+              if [ -z "${AMIId}" ] ; then
+                sudo -u ec2-user pip3 install -r /tmp/bgp-gateway/requirements.txt
+              fi
+              sudo -u ec2-user cp -r /tmp/bgp-gateway /home/ec2-user/
+              sudo -u ec2-user cp -a /tmp/gobgp  /home/ec2-user/bin/
+              sudo -u ec2-user cp -a /tmp/gobgpd  /home/ec2-user/bin/
+              sudo -u ec2-user cp /tmp/scr/gobgp-conf-builder.py /home/ec2-user/scr/gobgp-conf-builder.py
+              sudo -u ec2-user cp /tmp/scr/route-add.py /home/ec2-user/scr/route-add.py
+              sleep 5
+              x="sudo -u ec2-user python3 /home/ec2-user/scr/gobgp-conf-builder.py --primaryIFIP ${BGPSpeakerPrimaryENIIPAddress} --bgpSpeakerAS ${BGPSpeakerAS} --peerAS ${PeerAS} --primaryIFPeers ${PrimaryENIPeers}"
+              if [ -n "${BGPSpeakerSecondaryENIIPAddresses}" ] ;
+              then
+                x+=" --secondaryIFIP ${BGPSpeakerSecondaryENIIPAddresses}"
+              fi
+              if [ -n "${SecondaryENIPeers}" ] ;
+              then
+                x+=" --secondaryIFPeers ${SecondaryENIPeers}"
+              fi
+              if [ "${AuthPassword}" != "None" ] ;
+              then
+                x+=" --authPassword ${AuthPassword}"
+              fi
+              echo "$x" >> /etc/rc.d/rc.local
+              echo "sleep 1" >> /etc/rc.d/rc.local
+              echo "sudo -u ec2-user cp /tmp/config.json /home/ec2-user/conf/config.json" >> /etc/rc.d/rc.local
+              if [ -n "${SecondaryENIPeers}" ] ;
+              then
+                y="sudo -u ec2-user python3 /home/ec2-user/scr/route-add.py --secondaryIFPeers ${SecondaryENIPeers}"
+                echo "$y" >> /etc/rc.d/rc.local
+              fi
+              if [ -n "${VPCRTTag}" ] ;
+              then
+                echo "sudo -u ec2-user python3 /home/ec2-user/bgp-gateway/bgpgw.py --oper start --breakoutGWId ${BreakoutGWId} --SubnetLoopbacks ${SubnetBasedLoopbacks} --vpcRTTag ${VPCRTTag} & " >> /etc/rc.d/rc.local
+              else
+                echo "sudo -u ec2-user python3 /home/ec2-user/bgp-gateway/bgpgw.py --oper start --breakoutGWId ${BreakoutGWId} --SubnetLoopbacks ${SubnetBasedLoopbacks} & " >> /etc/rc.d/rc.local
+              fi
+              chmod a+x /etc/rc.d/rc.local
+              systemctl enable rc-local
+              systemctl start rc-local
+
+            - AMIId: !Ref AMIId
+              BGPSpeakerPrimaryENIIPAddress: !Ref BGPSpeakerPrimaryENIIPAddress
+              BGPSpeakerSecondaryENIIPAddresses: !Ref BGPSpeakerSecondaryENIIPAddresses
+              BGPSpeakerAS: !Ref BGPSpeakerAS
+              PeerAS: !Ref PeerAS
+              AuthPassword: !Ref AuthPassword
+              PrimaryENIPeers: !Ref PrimaryENIPeers
+              SecondaryENIPeers: !Ref SecondaryENIPeers
+              VPCRTTag: !Ref VPCRTTag
+              BreakoutGWId: !Ref BreakoutGWId
+              SubnetBasedLoopbacks: !Ref SubnetBasedLoopbacks
+              S3Bucket: !Ref S3Bucket
+
+        MetadataOptions:
+          HttpPutResponseHopLimit : 2
+          HttpEndpoint: enabled
+          HttpTokens: required
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            NetworkInterfaceId: !GetAtt MyENI1.Id
+          - DeviceIndex: 1
+            NetworkInterfaceId: !GetAtt MyENI2.Id
+          #   #SubnetId: !Select [ "0", !Ref BGPSpeakerPrimarySubnet ]
+          #   SubnetId: !Ref BGPSpeakerPrimarySubnet
+
+          #   DeleteOnTermination: "true"
+          #   Groups:
+          #     - !Ref NodeSecurityGroup
+          # - DeviceIndex: 1
+          #   #SubnetId: !Select [ "0", !Ref BGPSpeakerSecondarySubnet ]
+          #   SubnetId: !Ref SecondarySubnet
+          #   DeleteOnTermination: "true"
+          #   Groups:
+          #    - !Ref NodeSecurityGroup
+
+  NodeGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AvailabilityZones:
+        - !GetAtt getVPCDetails.az
+      DesiredCapacity: 1
+      LaunchTemplate:
+        LaunchTemplateId: !Ref NodeLaunchTemplate
+        Version: !GetAtt NodeLaunchTemplate.LatestVersionNumber
+      MaxSize: 1
+      MinSize: 1
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: true
+          Value: !Sub BGPSpeaker-ASG-${AWS::StackName}
+
+      #VPCZoneIdentifier:
+      #  - !Ref BGPSpeakerPrimarySubnet
+       # - !Ref BGPSpeakerSecondarySubnet
+
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MaxBatchSize: 1
+        MinInstancesInService: 0
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+        PauseTime: PT1M
+      AutoScalingScheduledAction:
+        IgnoreUnmodifiedGroupSizeProperties: true
+
+  # MyWarmPool:
+  #   Type: AWS::AutoScaling::WarmPool
+  #   DependsOn: NodeGroup
+  #   Properties:
+  #     AutoScalingGroupName: !Sub BGPSpeaker-ASG-${AWS::StackName}
+  #     MaxGroupPreparedCapacity: 1
+  #     MinSize: 0
+  #     PoolState: Stopped
+
+Outputs:
+  NodeInstanceRole:
+    Description: The node instance role
+    Value: !GetAtt NodeInstanceRole.Arn
+
+  NodeSecurityGroup:
+    Description: The security group for the server
+    Value: !GetAtt NodeSecurityGroup.GroupId

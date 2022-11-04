@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  A new VPC creation for EKS LandingZone. VPC, IGW, NATGW, 2 Public Subnets, 2 Private Subnets (each per AZ) and 3 route tables get created
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: VPC Configuration
+        Parameters:
+          - VpcCidr
+          - AvailabilityZone
+          - PubMgmtSubnetAz1Cidr
+          - PrivSvcSubnetAz1Cidr
+      - Label:
+          default: Nf Configuration
+        Parameters:
+          - NfInstanceType
+          - NfKeyPairName
+          - LatestAmiId
+          - NfSvcEniIpAddressAz1
+
+Parameters:
+  AvailabilityZone:
+    Description: Availability Zone to use for the subnets in the VPC. Select one.
+    Type: AWS::EC2::AvailabilityZone::Name
+  VpcCidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 172.22.0.0/16
+    Description: CIDR block for the VPC.
+    Type: String
+  PubMgmtSubnetAz1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 172.22.0.0/24
+    Description: CIDR block for the Public Subnet in AZ1.
+    Type: String
+  PrivSvcSubnetAz1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 172.22.1.0/24
+    Description: CIDR block for the Private Subnet in AZ1. This will be used for the main K8s network.
+    Type: String
+  NfKeyPairName:
+    Description: Name of an existing key pair, which allows you
+      to securely connect to your instance after it launches.
+    Type: AWS::EC2::KeyPair::KeyName
+  NfInstanceType:
+    Type: String
+    Default: t3.medium
+    Description : Instance type for a NF.
+    AllowedValues:
+      - t2.small
+      - t2.medium
+      - t2.large
+      - t3.small
+      - t3.medium
+      - t3.large
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  NfSvcEniIpAddressAz1:
+    Type: String
+    Default: '172.22.1.8'
+    Description: "ENI IP address (eth1) of NF service interface"
+
+Resources:
+  Vpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "vpc-${AWS::StackName}"
+
+  ### IGW for the VPC
+  VpcIgw:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "igw-${AWS::StackName}"
+  VpcIgwAattach:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref VpcIgw
+
+  #### Subnet-PublicMgmt #####
+  PubMgmtSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PubMgmtSubnetAz1Cidr
+      AvailabilityZone: !Ref AvailabilityZone
+      Tags:
+        - Key: Name
+          Value: !Sub "pubMgmt-Az1-${AWS::StackName}"
+  PubMgmtSubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "pubMgmt-SubnetRt-${AWS::StackName}"
+  PubMgmtRtDfltRt:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VpcIgwAattach
+    Properties:
+      RouteTableId: !Ref PubMgmtSubnetRt
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VpcIgw
+  PubMgmtAz1RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubMgmtSubnetAz1
+      RouteTableId: !Ref PubMgmtSubnetRt
+
+
+  #### Subnet-PrivSVC #####
+  PrivSvcSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivSvcSubnetAz1Cidr
+      AvailabilityZone: !Ref AvailabilityZone
+      Tags:
+        - Key: Name
+          Value: !Sub "privSvc-Az1-${AWS::StackName}"
+
+  ### Subnet Route Table for Private Subnets
+  PrivSvcAz1SubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "privSvcAz1SubnetRt-${AWS::StackName}"
+  PrivSvcAz1RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivSvcSubnetAz1
+      RouteTableId: !Ref PrivSvcAz1SubnetRt
+
+  PubMgmtSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: '-1'
+        FromPort: '-1'
+        ToPort: '-1'
+        CidrIp: !Ref VpcCidr
+      Tags:
+        - Key: Name
+          Value: !Sub "edc-mgmt-Sg-${AWS::StackName}"
+  PrivSvcSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow EDC and RDC
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+      - IpProtocol: '-1'
+        FromPort: '-1'
+        ToPort: '-1'
+        CidrIp: !Ref VpcCidr
+      - IpProtocol: '-1'
+        FromPort: '-1'
+        ToPort: '-1'
+        CidrIp: '10.0.0.0/16'
+      - IpProtocol: '-1'
+        FromPort: '-1'
+        ToPort: '-1'
+        CidrIp: '20.1.0.0/16'
+      Tags:
+        - Key: Name
+          Value: !Sub "edc-svc-Sg-${AWS::StackName}"
+
+
+  NfMgmtEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PubMgmtSubnetAz1
+      GroupSet:
+        - !Ref PubMgmtSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-mgmt-eni-az1-${AWS::StackName}"
+  NfSvcEniAz1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PrivSvcSubnetAz1
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref PrivSvcSecurityGroup
+      PrivateIpAddress: !Ref NfSvcEniIpAddressAz1
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-svc-eni-az1-${AWS::StackName}"
+
+  NfMgmtEipAz1:
+    Type: AWS::EC2::EIP
+  NfMgmtIpAssocAz1:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !GetAtt NfMgmtEniAz1.Id
+      AllocationId: !GetAtt NfMgmtEipAz1.AllocationId
+
+  NfInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      InstanceType: !Ref NfInstanceType
+      KeyName: !Ref NfKeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !GetAtt NfMgmtEniAz1.Id
+        - DeviceIndex: 1
+          NetworkInterfaceId: !GetAtt NfSvcEniAz1.Id
+      ImageId: !Ref LatestAmiId
+      Tags:
+        - Key: Name
+          Value: !Sub "nf-az1-${AWS::StackName}"
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Vpc
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+  VpcCidr:
+    Description: VPC CIDR
+    Value: !GetAtt Vpc.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcCidr"
+  NfPublicIp:
+    Description: NfHost Public IP
+    Value: !GetAtt NfInstance.PublicIp
+    Export:
+      Name: !Sub "${AWS::StackName}-NfPublicIp"
