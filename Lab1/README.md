@@ -102,4 +102,4 @@ rtt min/avg/max/mdev = 0.622/0.706/0.853/0.077 ms
 
 
 
-If you completed Lab1 then, let's go to [Lab2](https://github.com/crosscom/aws-handson-lab-bgpspeaker/tree/main/Lab2).
+If you completed Lab1 then, let's go to [Lab2](https://github.com/crosscom/aws-handson-lab-bgpspk/tree/main/Lab2).
