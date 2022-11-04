@@ -4,7 +4,7 @@
 
 This document describes test environment set up and test results for Custom BGP Speaker (https://gitlab.aws.dev/proserv/bgpspeaker created by (snghmhq@)). Please note that, this site is internal training purpose only. 
 
-
+Because of AMI dependancy in CFN, using **IAD** Region is highly recommended. 
 
 ## Environment Setup
 
