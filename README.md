@@ -44,4 +44,5 @@ This document describes test environment set up and test results for Custom BGP 
 
 * Upload bgp-speaker main's `install` directory to your own S3. (e.g. `s3:://crosscom-bgp-speaker`)
 
-* If environment set up is done, let's go to [Lab1](https://github.com/crosscom/aws-handson-lab-bgpspeaker/tree/main/Lab1).
+* If environment set up is done, let's go to [Lab1](https://github.com/crosscom/aws-handson-lab-bgpspk/tree/main/Lab1).
+
