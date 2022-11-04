@@ -42,7 +42,7 @@ This document describes test environment set up and test results for Custom BGP 
 
 ![BGP-Speaker-Test-new-CFN2-NFs.drawio](./image/BGP-Speaker-Test-new-CFN2-NFs.drawio.png)
 
-* Upload bgp-speaker main's `install` directory to your own S3. (e.g. `s3:://crosscom-bgp-speaker`)
+* Upload bgp-speaker main's `install` directory to your own S3. (e.g. `s3:://crosscom-bgp-speaker`) You can find current version (11/4/2022) from template folder of this Github (`bgpspeaker-main.zip`, download this file, unzip, then place install directory to your S3)
 
 * If environment set up is done, let's go to [Lab1](https://github.com/crosscom/aws-handson-lab-bgpspk/tree/main/Lab1).
 
