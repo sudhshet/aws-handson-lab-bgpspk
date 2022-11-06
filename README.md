@@ -16,7 +16,7 @@ Because of AMI dependancy in CFN, using **IAD** Region is highly recommended.
 * Create vRouter(s) and NF instances using `bgpspk-rdc-nodes.yaml`. 
   * VyOS vRotuers and NF instances are created with source/dest check disabled. 
   * VyOS vRouters and NF instances are with security group to allow all packets from VPC CIDR (10.0.0.0/16). 
-  * There is a parameter `EipToNf = true or false` which means whether each NF will have the EIP (for easier access) or not. For this, you should be mindful of your EIP limit in us-east-1 Region. 
+  * There is a parameter `EipToNf = true or false` which means whether each NF will have the EIP (for easier access) or not. For this, you should be mindful of your EIP limit in us-east-1 Region. If you disable this flag, then you have to access to each vRouter and NF through Bastion host. 
   * CFN parameter example
 
 ----
