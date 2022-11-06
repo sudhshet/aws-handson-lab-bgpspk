@@ -9,11 +9,9 @@ Metadata:
           default: BGP Test Nodes Creation
         Parameters:
           - NodeStackName
+          - InfraStackName
           - VpcId
-          - MgmtSubnetAz1
-          - SvcSubnetAz1
-          - MgmtSubnetAz2
-          - SvcSubnetAz2
+          - EipToNfs
       - Label:
           default: vRouter(VyOS) Router for the AZs
         Parameters:
@@ -36,18 +34,14 @@ Parameters:
   VpcId:
     Type: "AWS::EC2::VPC::Id"
     Description: The VPC of the BGP test environment
-  MgmtSubnetAz1:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet Id of the mgmt (eth0) interface of the vRouter and NF
-  SvcSubnetAz1:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet Id of the BGP and SVC (eth1) interface of the vRouter and NF
-  MgmtSubnetAz2:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet Id of the mgmt (eth0) interface of the vRouter and NF
-  SvcSubnetAz2:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet Id of the BGP and SVC (eth1) interface of the vRouter and NF
+  InfraStackName:
+    Type: String
+    Description: Name of an active CloudFormation stack that contains BGP Speaker test infrastructure.
+  EipToNfs:
+    Default: false
+    Type: String
+    AllowedValues: [true, false]
+    Description: Whether you want to associate EIP to each NF and vRouter (please be mindful your EIP limit)
   vRouterSvcEniIpAddressAz1:
     Type: String
     Default: '10.0.2.7'
@@ -102,6 +96,9 @@ Parameters:
   NfAmiId:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+Conditions:
+  AssociateEipToNfs: !Equals [!Ref EipToNfs, 'true']
 
 Resources:
 # Instance Role (common to vRouters and NFs)
@@ -238,20 +235,20 @@ Resources:
     Properties:
       ServiceToken: !GetAtt LambdaGetVPCDetails.Arn
       VpcId: !Ref VpcId
-      SubnetId: !Ref MgmtSubnetAz1
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz1" } }
 
   getVPCDetailsAz2:
     Type: Custom::getVPCDetailsAz2
     Properties:
       ServiceToken: !GetAtt LambdaGetVPCDetails.Arn
       VpcId: !Ref VpcId
-      SubnetId: !Ref MgmtSubnetAz2
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz2" } }
 
 # Resources for vRouters
   vRouterMgmtEniAz1:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref MgmtSubnetAz1
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz1" } }
       GroupSet:
         - !Ref MgmtSecurityGroup
       Tags:
@@ -260,7 +257,7 @@ Resources:
   vRouterSvcEniAz1:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref SvcSubnetAz1
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PrivSvcSubnetAz1" } }
       SourceDestCheck: false
       GroupSet:
         - !Ref NodeSecurityGroup
@@ -271,7 +268,7 @@ Resources:
   vRouterMgmtEniAz2:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref MgmtSubnetAz2
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz2" } }
       GroupSet:
         - !Ref MgmtSecurityGroup
       Tags:
@@ -280,7 +277,7 @@ Resources:
   vRouterSvcEniAz2:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref SvcSubnetAz2
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PrivSvcSubnetAz2" } }
       SourceDestCheck: false
       GroupSet:
         - !Ref NodeSecurityGroup
@@ -293,7 +290,7 @@ Resources:
   NfMgmtEniAz1:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref MgmtSubnetAz1
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz1" } }
       GroupSet:
         - !Ref MgmtSecurityGroup
       Tags:
@@ -302,7 +299,7 @@ Resources:
   NfSvcEniAz1:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref SvcSubnetAz1
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PrivSvcSubnetAz1" } }
       SourceDestCheck: false
       GroupSet:
         - !Ref NodeSecurityGroup
@@ -313,7 +310,7 @@ Resources:
   NfMgmtEniAz2:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref MgmtSubnetAz2
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz2" } }
       GroupSet:
         - !Ref MgmtSecurityGroup
       Tags:
@@ -322,7 +319,7 @@ Resources:
   NfSvcEniAz2:
     Type: AWS::EC2::NetworkInterface
     Properties:
-      SubnetId: !Ref SvcSubnetAz2
+      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PrivSvcSubnetAz2" } }
       SourceDestCheck: false
       GroupSet:
         - !Ref NodeSecurityGroup
@@ -392,7 +389,7 @@ Resources:
             cfnresponse.send(event, context, response_status, response_data)
 
 # Creating vRouter from LaunchTemplate at each AZ
-# Note: src/dst check disable, EIP to mgmt interface, SG with allowing packets from VPC CIDR
+# Note: src/dst check disable, SG with allowing packets from VPC CIDR
   vRouterInstanceAz1:
     Type: AWS::EC2::Instance
     Properties:
@@ -462,53 +459,86 @@ Resources:
 # Bind EIPs to MGMT Interfaces
   vRouterMgmtEipAz1:
     Type: AWS::EC2::EIP
+    Condition: AssociateEipToNfs
   vRouterMgmtIpAssocAz1:
     Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEipToNfs
     Properties:
       NetworkInterfaceId: !GetAtt vRouterMgmtEniAz1.Id
       AllocationId: !GetAtt vRouterMgmtEipAz1.AllocationId
   vRouterMgmtEipAz2:
     Type: AWS::EC2::EIP
+    Condition: AssociateEipToNfs
   vRouterMgmtIpAssocAz2:
     Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEipToNfs
     Properties:
       NetworkInterfaceId: !GetAtt vRouterMgmtEniAz2.Id
       AllocationId: !GetAtt vRouterMgmtEipAz2.AllocationId
   NfMgmtEipAz1:
     Type: AWS::EC2::EIP
+    Condition: AssociateEipToNfs
   NfMgmtIpAssocAz1:
     Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEipToNfs
     Properties:
       NetworkInterfaceId: !GetAtt NfMgmtEniAz1.Id
       AllocationId: !GetAtt NfMgmtEipAz1.AllocationId
   NfMgmtEipAz2:
     Type: AWS::EC2::EIP
+    Condition: AssociateEipToNfs
   NfMgmtIpAssocAz2:
     Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEipToNfs
     Properties:
       NetworkInterfaceId: !GetAtt NfMgmtEniAz2.Id
       AllocationId: !GetAtt NfMgmtEipAz2.AllocationId
 
 Outputs:
-# Mgmt Public IP of VyOS vRouter
-# Mgmt Public IP of Nf
+# Mgmt Public IP of VyOS vRouter, NFs
   vRouterMgmtPublicIpAz1:
     Description: vRouter1-AZ1 Public IP
+    Condition: AssociateEipToNfs
     Value: !Ref vRouterMgmtEipAz1
     Export:
       Name: !Sub "${AWS::StackName}-vRouter-AZ1-publicip"
   vRouterMgmtPublicIpAz2:
     Description: vRouter2-AZ2 Public IP
+    Condition: AssociateEipToNfs
     Value: !Ref vRouterMgmtEipAz2
     Export:
       Name: !Sub "${AWS::StackName}-vRouter-AZ2-publicip"
   NfrMgmtPublicIpAz1:
     Description: Nf1-AZ1 Public IP
+    Condition: AssociateEipToNfs
     Value: !Ref NfMgmtEipAz1
     Export:
       Name: !Sub "${AWS::StackName}-nf-AZ1-publicip"
   NfMgmtPublicIpAz2:
     Description: Nf2-AZ2 Public IP
+    Condition: AssociateEipToNfs
     Value: !Ref NfMgmtEipAz2
     Export:
       Name: !Sub "${AWS::StackName}-nf-AZ2-publicip"
+
+# Mgmt Mgmt IP of VyOS vRouters and NFs
+  vRouterMgmtIpAz1:
+    Description: vRouter1-AZ1 MGMT IP
+    Value: !GetAtt vRouterMgmtEniAz1.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub "${AWS::StackName}-vRouter-AZ1-mgmt-ip"
+  vRouterMgmtIpAz2:
+    Description: vRouter2-AZ2 MGMT IP
+    Value: !GetAtt vRouterMgmtEniAz2.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub "${AWS::StackName}-vRouter-AZ2-mgmt-ip"
+  NfMgmtIpAz1:
+    Description: Nf1-AZ1 MGMT IP
+    Value: !GetAtt NfMgmtEniAz1.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub "${AWS::StackName}-nf-AZ1-mgmt-ip"
+  NfMgmtIpAz2:
+    Description: Nf2-AZ2 MGMT IP
+    Value: !GetAtt NfMgmtEniAz2.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub "${AWS::StackName}-nf-AZ2-mgmt-ip"
