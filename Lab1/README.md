@@ -1,6 +1,6 @@
 ## Lab1: Single AZ VIP by BGP
 
-![bgp-speaker-tc1](../image/bgp-speaker-tc1.png)
+![bgp-speaker-tc1](../image/BGP-Speaker-Test-PoC1.drawio.png)
 
 
 
