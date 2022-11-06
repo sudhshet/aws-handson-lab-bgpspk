@@ -11,7 +11,7 @@ Because of AMI dependancy in CFN, using **IAD** Region is highly recommended.
 * Create VPC environment using CFN `bgpspk-rdc-infra.yaml`.
   * Note that, key=`byBgpSpeaker` and value=`true` would be attached to PrivateSubnet1a and PrivateSubnet1b route table. 
 
-![BGP-Speaker-Test-new-CFN1-Infra.drawio](./image/BGP-Speaker-Test-new-CFN1-Infra.drawio.png)
+![BGP-Speaker-Test-new-CFN1-Infra.drawio](./image/BGP-Speaker-Test-CFN1-Infra.drawio.png)
 
 * Create vRouter(s) and NF instances using `bgpspk-rdc-nodes.yaml`. 
   * VyOS vRotuers and NF instances are created with source/dest check disabled. 
@@ -40,7 +40,7 @@ Because of AMI dependancy in CFN, using **IAD** Region is highly recommended.
 
 
 
-![BGP-Speaker-Test-new-CFN2-NFs.drawio](./image/BGP-Speaker-Test-new-CFN2-NFs.drawio.png)
+![BGP-Speaker-Test-new-CFN2-NFs.drawio](./image/BGP-Speaker-Test-CFN2-NFs.drawio.png)
 
 * Upload bgp-speaker main's `install` directory to your own S3. (e.g. `s3:://crosscom-bgp-speaker`) You can find current version (11/4/2022) from template folder of this Github (`bgpspeaker-main.zip`, download this file, unzip, then place install directory to your S3)
 
