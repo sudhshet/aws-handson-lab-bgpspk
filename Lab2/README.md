@@ -2,7 +2,7 @@
 
 ## Lab2: multi-AZ VIP
 
-![bgp-speaker-tc2](../image/bgp-speaker-tc2.png)
+![bgp-speaker-tc2](../image/BGP-Speaker-Test-PoC2.drawio.png)
 
 
 
