@@ -44,6 +44,7 @@
 4. VyOS1 BGP configuration
 
    ````
+    set protocols bgp system-as 65002
     set protocols bgp 65002 neighbor 10.0.4.8 remote-as 65001
     set protocols bgp 65002 neighbor 10.0.4.8 password bgpspeaker
     set protocols bgp 65002 neighbor 10.0.6.8 remote-as 65001
