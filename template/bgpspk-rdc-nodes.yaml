@@ -34,9 +34,11 @@ Parameters:
   VpcId:
     Type: "AWS::EC2::VPC::Id"
     Description: The VPC of the BGP test environment
+    AllowedPattern : ".+"
   InfraStackName:
     Type: String
     Description: Name of an active CloudFormation stack that contains BGP Speaker test infrastructure.
+    AllowedPattern : ".+"
   EipToNfs:
     Default: false
     Type: String
@@ -68,7 +70,7 @@ Parameters:
     Description: The EC2 Key Pair to allow SSH access to the instances
   vRouterAmiId:
     Type: String
-    Default: ami-0fa0d75bcdae6b2c8
+    Default: ami-0d232275032f1eaf6
     Description: "AMI ID of vRouter (VyOS is in default)"
 
 # Nf at each AZ
@@ -404,7 +406,7 @@ Resources:
       ImageId: !Ref vRouterAmiId
       Tags:
         - Key: Name
-          Value: !Sub "vRouter-az1-${AWS::StackName}"
+          Value: !Sub "vRouter1-az1-${AWS::StackName}"
 
   vRouterInstanceAz2:
     Type: AWS::EC2::Instance
@@ -420,7 +422,7 @@ Resources:
       ImageId: !Ref vRouterAmiId
       Tags:
         - Key: Name
-          Value: !Sub "vRouter-az2-${AWS::StackName}"
+          Value: !Sub "vRouter2-az2-${AWS::StackName}"
 
 # Creating NFs from LaunchTemplate at each AZ
 # Note: src/dst check disable, EIP to mgmt interface, SG with allowing packets from VPC CIDR
@@ -438,7 +440,7 @@ Resources:
       ImageId: !Ref NfAmiId
       Tags:
         - Key: Name
-          Value: !Sub "nf-az1-${AWS::StackName}"
+          Value: !Sub "nf1-az1-${AWS::StackName}"
 
   NfInstanceAz2:
     Type: AWS::EC2::Instance
@@ -454,7 +456,7 @@ Resources:
       ImageId: !Ref NfAmiId
       Tags:
         - Key: Name
-          Value: !Sub "nf-az2-${AWS::StackName}"
+          Value: !Sub "nf2-az2-${AWS::StackName}"
 
 # Bind EIPs to MGMT Interfaces
   vRouterMgmtEipAz1:

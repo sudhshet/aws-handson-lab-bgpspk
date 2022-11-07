@@ -32,6 +32,7 @@ Metadata:
 Parameters:
   AvailabilityZones:
     Description: List of Availability Zones to use for the subnets in the VPC. Select 2 of them.
+    AllowedPattern : ".+"
     Type: List<AWS::EC2::AvailabilityZone::Name>
   VpcCidr:
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
@@ -95,6 +96,7 @@ Parameters:
     Description: Name of an existing key pair, which allows you
       to securely connect to your instance after it launches.
     Type: AWS::EC2::KeyPair::KeyName
+    AllowedPattern : ".+"
   BastionInstanceType:
     Type: String
     Default: t3.medium
