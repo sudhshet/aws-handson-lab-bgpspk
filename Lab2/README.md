@@ -68,7 +68,7 @@
   set protocols bgp neighbor 10.0.6.8 password bgpspeaker
   set protocols bgp address-family ipv4-unicast network 20.1.1.0/24
   set protocols bgp address-family ipv4-unicast network 20.1.2.10/32
-  set protocols bgp neighbor 10.0.4.8 address-family ipv4-unicast
+  set protocols bgp neighbor 10.0.6.8 address-family ipv4-unicast
   set firewall send-redirects disable
   commit
   ````
