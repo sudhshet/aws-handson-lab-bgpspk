@@ -146,6 +146,8 @@ Resources:
       Path: /
       Roles:
         - !Ref NodeInstanceRole
+
+# Service Interface Security Group
   NodeSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
@@ -169,11 +171,23 @@ Resources:
     DependsOn: NodeSecurityGroup
     Properties:
       Description: Add VPC CIDR
-      FromPort: 179
+      FromPort: "-1"
       GroupId: !Ref NodeSecurityGroup
       IpProtocol: "-1"
       CidrIp: !GetAtt getVPCDetailsAz1.vpcCidr
-      ToPort: 179
+      ToPort: "-1"
+  NodeSecurityGroupIngressEdcVpc:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    DependsOn: NodeSecurityGroup
+    Properties:
+      Description: Add EDC VPC CIDR
+      FromPort: "-1"
+      GroupId: !Ref NodeSecurityGroup
+      IpProtocol: "-1"
+      CidrIp: "172.22.0.0/16"
+      ToPort: "-1"
+
+# Mgmt Interface Security Group
   MgmtSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
@@ -247,15 +261,6 @@ Resources:
       SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz2" } }
 
 # Resources for vRouters
-  vRouterMgmtEniAz1:
-    Type: AWS::EC2::NetworkInterface
-    Properties:
-      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz1" } }
-      GroupSet:
-        - !Ref MgmtSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Sub "vrouter-mgmt-eni-az1-${AWS::StackName}"
   vRouterSvcEniAz1:
     Type: AWS::EC2::NetworkInterface
     Properties:
@@ -267,15 +272,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "vrouter-svc-eni-az1-${AWS::StackName}"
-  vRouterMgmtEniAz2:
-    Type: AWS::EC2::NetworkInterface
-    Properties:
-      SubnetId: { "Fn::ImportValue" : {"Fn::Sub": "${InfraStackName}-PubMgmtSubnetAz2" } }
-      GroupSet:
-        - !Ref MgmtSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Sub "vrouter-mgmt-eni-az2-${AWS::StackName}"
   vRouterSvcEniAz2:
     Type: AWS::EC2::NetworkInterface
     Properties:
@@ -400,8 +396,6 @@ Resources:
       KeyName: !Ref vRouterKeyPairName
       NetworkInterfaces:
         - DeviceIndex: 0
-          NetworkInterfaceId: !GetAtt vRouterMgmtEniAz1.Id
-        - DeviceIndex: 1
           NetworkInterfaceId: !GetAtt vRouterSvcEniAz1.Id
       ImageId: !Ref vRouterAmiId
       Tags:
@@ -416,8 +410,6 @@ Resources:
       KeyName: !Ref vRouterKeyPairName
       NetworkInterfaces:
         - DeviceIndex: 0
-          NetworkInterfaceId: !GetAtt vRouterMgmtEniAz2.Id
-        - DeviceIndex: 1
           NetworkInterfaceId: !GetAtt vRouterSvcEniAz2.Id
       ImageId: !Ref vRouterAmiId
       Tags:
@@ -459,24 +451,6 @@ Resources:
           Value: !Sub "nf2-az2-${AWS::StackName}"
 
 # Bind EIPs to MGMT Interfaces
-  vRouterMgmtEipAz1:
-    Type: AWS::EC2::EIP
-    Condition: AssociateEipToNfs
-  vRouterMgmtIpAssocAz1:
-    Type: AWS::EC2::EIPAssociation
-    Condition: AssociateEipToNfs
-    Properties:
-      NetworkInterfaceId: !GetAtt vRouterMgmtEniAz1.Id
-      AllocationId: !GetAtt vRouterMgmtEipAz1.AllocationId
-  vRouterMgmtEipAz2:
-    Type: AWS::EC2::EIP
-    Condition: AssociateEipToNfs
-  vRouterMgmtIpAssocAz2:
-    Type: AWS::EC2::EIPAssociation
-    Condition: AssociateEipToNfs
-    Properties:
-      NetworkInterfaceId: !GetAtt vRouterMgmtEniAz2.Id
-      AllocationId: !GetAtt vRouterMgmtEipAz2.AllocationId
   NfMgmtEipAz1:
     Type: AWS::EC2::EIP
     Condition: AssociateEipToNfs
@@ -498,18 +472,6 @@ Resources:
 
 Outputs:
 # Mgmt Public IP of VyOS vRouter, NFs
-  vRouterMgmtPublicIpAz1:
-    Description: vRouter1-AZ1 Public IP
-    Condition: AssociateEipToNfs
-    Value: !Ref vRouterMgmtEipAz1
-    Export:
-      Name: !Sub "${AWS::StackName}-vRouter-AZ1-publicip"
-  vRouterMgmtPublicIpAz2:
-    Description: vRouter2-AZ2 Public IP
-    Condition: AssociateEipToNfs
-    Value: !Ref vRouterMgmtEipAz2
-    Export:
-      Name: !Sub "${AWS::StackName}-vRouter-AZ2-publicip"
   NfrMgmtPublicIpAz1:
     Description: Nf1-AZ1 Public IP
     Condition: AssociateEipToNfs
@@ -524,16 +486,6 @@ Outputs:
       Name: !Sub "${AWS::StackName}-nf-AZ2-publicip"
 
 # Mgmt Mgmt IP of VyOS vRouters and NFs
-  vRouterMgmtIpAz1:
-    Description: vRouter1-AZ1 MGMT IP
-    Value: !GetAtt vRouterMgmtEniAz1.PrimaryPrivateIpAddress
-    Export:
-      Name: !Sub "${AWS::StackName}-vRouter-AZ1-mgmt-ip"
-  vRouterMgmtIpAz2:
-    Description: vRouter2-AZ2 MGMT IP
-    Value: !GetAtt vRouterMgmtEniAz2.PrimaryPrivateIpAddress
-    Export:
-      Name: !Sub "${AWS::StackName}-vRouter-AZ2-mgmt-ip"
   NfMgmtIpAz1:
     Description: Nf1-AZ1 MGMT IP
     Value: !GetAtt NfMgmtEniAz1.PrimaryPrivateIpAddress
