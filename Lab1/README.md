@@ -6,7 +6,7 @@
 
 1. NF1 VIP configuration 
 
-   * Configure VIPs to NF1
+   * Take a ssh connection to the NF1 EC2 instance and configure VIPs to NF1
 
    ````
    sudo ifconfig eth1:1 20.1.1.10/24
@@ -16,41 +16,47 @@
 
 2. NF2 return path setting
 
+   * Take another ssh connection to the NF2 EC2 instance and add route for the return path
+
    ````
    sudo route add -net 20.1.0.0/16 gw 10.0.3.1
    ````
 
 3. VyOS1 static route configuration for NF1's VIP. Since VyOS1 has default GW as eth0 (mgmt interface), we need some more static route configurations. 
 
+   * Connect to the VyOS1 EC2 instance vRouter-az1-... -  using ssh from the Bastion Host (If you haven't configured EIP) 
+	    - ssh vyos@<vRouter-az1-* instance Private IP> , password is "vyos"
+	    - 
    ````
    vyos@ip-10-0-0-44# configure
    set interfaces ethernet eth1 address 10.0.2.7/24
    set protocols static route 20.1.1.0/24 next-hop 10.0.2.8
    set protocols static route 20.1.2.10/32 next-hop 10.0.2.8
-   set protocols static route 10.0.3.0/24 next-hop 10.0.2.1
-   set protocols static route 10.0.4.0/24 next-hop 10.0.2.1
-   set protocols static route 10.0.6.0/24 next-hop 10.0.2.1
+
    
-   vyos@ip-10-0-0-44# route
-   Kernel IP routing table
-   Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-   default         ip-10-0-0-1.ec2 0.0.0.0         UG    20     0        0 eth0
-   10.0.0.0        *               255.255.255.0   U     0      0        0 eth0
-   10.0.2.0        *               255.255.255.0   U     0      0        0 eth1
-   20.1.1.0        ip-10-0-2-8.ec2 255.255.255.0   UG    20     0        0 eth1
-   20.1.2.10       ip-10-0-2-8.ec2 255.255.255.255 UGH   20     0        0 eth1
+    vyos@vyos# route
+    Kernel IP routing table
+    Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+    default         10.0.2.1        0.0.0.0         UG    20     0        0 eth0
+    10.0.2.0        0.0.0.0         255.255.255.0   U     0      0        0 eth0
+    20.1.1.0        10.0.2.8        255.255.255.0   UG    20     0        0 eth0
+    20.1.2.10       10.0.2.8        255.255.255.255 UGH   20     0        0 eth0
+
    ````
 
 4. VyOS1 BGP configuration
 
    ````
     set protocols bgp system-as 65002
-    set protocols bgp 65002 neighbor 10.0.4.8 remote-as 65001
-    set protocols bgp 65002 neighbor 10.0.4.8 password bgpspeaker
-    set protocols bgp 65002 neighbor 10.0.6.8 remote-as 65001
-    set protocols bgp 65002 neighbor 10.0.6.8 password bgpspeaker
-    set protocols bgp 65002 address-family ipv4-unicast network 20.1.1.0/24
-    set protocols bgp 65002 address-family ipv4-unicast network 20.1.2.10/32
+    set protocols bgp neighbor 10.0.4.8 remote-as 65001
+    set protocols bgp neighbor 10.0.4.8 password bgpspeaker
+    set protocols bgp neighbor 10.0.6.8 remote-as 65001
+    set protocols bgp neighbor 10.0.6.8 password bgpspeaker
+    set protocols bgp address-family ipv4-unicast network 20.1.1.0/24
+    set protocols bgp address-family ipv4-unicast network 20.1.2.10/32
+    set protocols bgp neighbor 10.0.4.8 address-family ipv4-unicast
+    set protocols bgp neighbor 10.0.6.8 address-family ipv4-unicast
+    set firewall send-redirects disable
    ````
 
 5. BGP-speaker installation
@@ -71,7 +77,7 @@
      * PrimaryENIPeers: 10.0.2.7
 
 6. Trouble shooting tips
-   * Log in to BGP Speaker server and check logs directory for the log. 
+   * Log in to BGP Speaker server 10.0.4.8  from the Bastion host and check - "sudo cat /var/log/cloud-init-output.log" for any errors
    * Check commands
      * `ps -ef | grep gobgp` check whether gobgpd is running. 
      * cd bin and `./gobgp global rib`
