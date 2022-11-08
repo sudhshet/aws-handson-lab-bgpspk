@@ -22,11 +22,11 @@
    sudo route add -net 20.1.0.0/16 gw 10.0.3.1
    ````
 
-3. VyOS1 static route configuration for NF1's VIP. Since VyOS1 has default GW as eth0 (mgmt interface), we need some more static route configurations. 
+3. VyOS1 static route configuration for NF1's VIP. 
 
    * Connect to the VyOS1 EC2 instance vRouter-az1-... -  using ssh from the Bastion Host (If you haven't configured EIP) 
 	    - ssh vyos@<vRouter-az1-* instance Private IP> , password is "vyos"
-	    - 
+	    
    ````
    vyos@ip-10-0-0-44# configure
    set interfaces ethernet eth1 address 10.0.2.7/24
