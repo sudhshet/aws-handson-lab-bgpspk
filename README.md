@@ -41,7 +41,7 @@ Because of AMI dependancy in CFN, using **IAD** Region is highly recommended.
 
 
 
-![BGP-Speaker-Test-new-CFN2-NFs.drawio](./image/BGP-Speaker-Test-CFN2-NFs.drawio.png)
+![BGP-Speaker-Test-new-CFN2-NFs.drawio](./image/BGP-Speaker-Test-CFN2-nodes.drawio.png)
 
 * Upload bgp-speaker main's `install` directory to your own S3. (e.g. `s3:://crosscom-bgp-speaker`) You can find current version (11/4/2022) from template folder of this Github (`bgpspeaker-main.zip`, download this file, unzip, then place install directory to your S3)
 
