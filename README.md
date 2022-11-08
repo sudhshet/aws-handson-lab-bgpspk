@@ -4,7 +4,7 @@
 
 This document describes test environment set up and test results for Custom BGP Speaker (https://gitlab.aws.dev/proserv/bgpspeaker created by (snghmhq@)). Please note that, this site is internal training purpose only. 
 
-Because of AMI dependancy in CFN, using **IAD** Region is highly recommended. 
+Because of AMI dependancy in CFN, using **us-west-2** Region is recommended. 
 
 ## Environment Setup
 
@@ -14,7 +14,7 @@ Because of AMI dependancy in CFN, using **IAD** Region is highly recommended.
 ![BGP-Speaker-Test-new-CFN1-Infra.drawio](./image/BGP-Speaker-Test-CFN1-Infra.drawio.png)
 
 * Create vRouter(s) and NF instances using `bgpspk-rdc-nodes.yaml`. 
-  * VyOS vRotuers and NF instances are created with source/dest check disabled. 
+  * VyOS vRouters and NF instances are created with source/dest check disabled. 
   * VyOS vRouters and NF instances are with security group to allow all packets from VPC CIDR (10.0.0.0/16). 
   * There is a parameter `EipToNf = true or false` which means whether each NF will have the EIP (for easier access) or not. For this, you should be mindful of your EIP limit in us-east-1 Region. If you disable this flag, then you have to access to each vRouter and NF through the Bastion host. 
   * CFN parameter example
