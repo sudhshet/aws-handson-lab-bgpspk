@@ -43,9 +43,9 @@
 
   ````
   configure
+  set protocols static route 0.0.0.0/0 next-hop 10.0.2.1
   set protocols static route 20.1.1.0/24 next-hop 10.0.2.8
   set protocols static route 20.1.2.10/32 next-hop 10.0.2.8
-  commit
   set protocols bgp system-as 65002
   set protocols bgp neighbor 10.0.4.8 remote-as 65001
   set protocols bgp neighbor 10.0.4.8 password bgpspeaker
@@ -60,9 +60,9 @@
 
   ````
   configure
+  set protocols static route 0.0.0.0/0 next-hop 10.0.3.1
   set protocols static route 20.1.1.0/24 next-hop 10.0.3.8
   set protocols static route 20.1.2.10/32 next-hop 10.0.3.8
-  commit
   set protocols bgp system-as 65002
   set protocols bgp neighbor 10.0.6.8 remote-as 65001
   set protocols bgp neighbor 10.0.6.8 password bgpspeaker
