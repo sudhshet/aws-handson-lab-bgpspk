@@ -43,15 +43,16 @@
 
   ````
   configure
-  set interfaces ethernet eth1 address 10.0.2.7/24
   set protocols static route 20.1.1.0/24 next-hop 10.0.2.8
   set protocols static route 20.1.2.10/32 next-hop 10.0.2.8
-  set protocols static route 172.22.0.0/16 next-hop 10.0.2.1
-  set protocols static route 10.0.4.0/24 next-hop 10.0.2.1
-  set protocols bgp 65002 neighbor 10.0.4.8 remote-as 65001
-  set protocols bgp 65002 neighbor 10.0.4.8 password bgpspeaker
-  set protocols bgp 65002 address-family ipv4-unicast network 20.1.1.0/24
-  set protocols bgp 65002 address-family ipv4-unicast network 20.1.2.10/32
+  commit
+  set protocols bgp system-as 65002
+  set protocols bgp neighbor 10.0.4.8 remote-as 65001
+  set protocols bgp neighbor 10.0.4.8 password bgpspeaker
+  set protocols bgp address-family ipv4-unicast network 20.1.1.0/24
+  set protocols bgp address-family ipv4-unicast network 20.1.2.10/32
+  set protocols bgp neighbor 10.0.4.8 address-family ipv4-unicast
+  set firewall send-redirects disable
   commit
   ````
 
@@ -59,15 +60,16 @@
 
   ````
   configure
-  set interfaces ethernet eth1 address 10.0.3.7/24
   set protocols static route 20.1.1.0/24 next-hop 10.0.3.8
   set protocols static route 20.1.2.10/32 next-hop 10.0.3.8
-  set protocols static route 172.22.0.0/16 next-hop 10.0.3.1
-  set protocols static route 10.0.6.0/24 next-hop 10.0.3.1
-  set protocols bgp 65002 neighbor 10.0.6.8 remote-as 65001
-  set protocols bgp 65002 neighbor 10.0.6.8 password bgpspeaker
-  set protocols bgp 65002 address-family ipv4-unicast network 20.1.1.0/24
-  set protocols bgp 65002 address-family ipv4-unicast network 20.1.2.10/32
+  commit
+  set protocols bgp system-as 65002
+  set protocols bgp neighbor 10.0.6.8 remote-as 65001
+  set protocols bgp neighbor 10.0.6.8 password bgpspeaker
+  set protocols bgp address-family ipv4-unicast network 20.1.1.0/24
+  set protocols bgp address-family ipv4-unicast network 20.1.2.10/32
+  set protocols bgp neighbor 10.0.4.8 address-family ipv4-unicast
+  set firewall send-redirects disable
   commit
   ````
 
