@@ -29,10 +29,10 @@
 	    
    ````
    vyos@ip-10-0-0-44# configure
-   set interfaces ethernet eth1 address 10.0.2.7/24
+   set protocols static route 0.0.0.0/0 next-hop 10.0.2.1
    set protocols static route 20.1.1.0/24 next-hop 10.0.2.8
    set protocols static route 20.1.2.10/32 next-hop 10.0.2.8
-
+   commit
    
     vyos@vyos# route
     Kernel IP routing table
@@ -57,6 +57,7 @@
     set protocols bgp neighbor 10.0.4.8 address-family ipv4-unicast
     set protocols bgp neighbor 10.0.6.8 address-family ipv4-unicast
     set firewall send-redirects disable
+    commit
    ````
 
 5. BGP-speaker installation
